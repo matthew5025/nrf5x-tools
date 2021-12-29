@@ -7,8 +7,12 @@ from the 'developer.nordicsemi.com/' directory
 
 import fnmatch
 import os
+import urllib.request
 import zipfile
 import hashlib
+from pathlib import Path
+
+from bs4 import BeautifulSoup
 from sqlalchemy import Column, Integer, String, create_engine, ForeignKey, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
@@ -556,6 +560,38 @@ class SDKs(object):
         except IOError:
             print("I/O error: {0}".format(err))
 
+
+def download_sdk(path: str, url: str):
+    html_page = urllib.request.urlopen(url)
+    soup = BeautifulSoup(html_page, "html.parser")
+    sdk_version_links = set()
+    for link in soup.findAll('a'):
+        href_link = str(link.get('href'))
+        if href_link.startswith("nRF5") and "SDK" in href_link:
+            sdk_version_links.add(href_link)
+            Path(os.path.join(path, href_link)).mkdir(parents=True, exist_ok=True)
+
+    for sdk_version_path in sdk_version_links:
+        print(f'Checking for SDKs {sdk_version_path}')
+        html_page = urllib.request.urlopen(url + sdk_version_path)
+        soup = BeautifulSoup(html_page, "html.parser")
+        processed_sdk = set()
+        for link in soup.findAll('a'):
+            href_link = str(link.get('href'))
+            if href_link in processed_sdk:
+                continue
+            if href_link.lower().startswith("nrf5") and "sdk" in href_link.lower() \
+                    and ".zip" in href_link and "doc" not in href_link and "packs" not in href_link:
+                zip_file_path = os.path.join(path, sdk_version_path, href_link)
+                if os.path.isfile(zip_file_path):
+                    processed_sdk.add(href_link)
+                    continue
+                print(f'Downloading {href_link}')
+                urllib.request.urlretrieve(url + sdk_version_path + href_link,
+                                           os.path.join(path, sdk_version_path, href_link))
+                processed_sdk.add(href_link)
+
+
 def main():
     """
     main
@@ -564,6 +600,7 @@ def main():
     session = Session()
     NRFBase.metadata.create_all(engine)
     sdk_dir = "developer.nordicsemi.com/nRF5_SDK/"
+    download_sdk(sdk_dir, "http://" + sdk_dir)
     sdks = SDKs(sdk_dir)
     for sdk_v, zip_path in sdks.dict.items():
         sdk = SDK(sdk_v, zip_path)
