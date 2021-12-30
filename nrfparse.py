@@ -499,17 +499,33 @@ class SDK(object):
         sdv = "components/softdevice/s"
         inc_path = "/Include/s"
         src_path = "/Source/templates/gcc/"
-        with zipfile.ZipFile(self.zip_path) as sdv_zip:
-            for f in sdv_zip.namelist():
-                #compiled soft_device
-                if f.startswith(sdv) and f.endswith("/"):
-                    if ("headers" in f and not "nrf5" in f) or ("toolchain/armgcc/" in f):
-                        dir_to_extract = f 
-                        self.extract_fromzip(sdv_zip, f)
-                #for archives containing only soft_device source code 
-                elif f.startswith("nrf5"):
-                    if (inc_path in f and len(f.split("/")[2]) == 4 and f.split("/")[2].startswith('s')) or (src_path in f and "xx" in f and "_s" in f):
-                        self.extract_fromzip(sdv_zip, f)
+        # number of attempts
+        for _ in range(5):
+            try:
+                with zipfile.ZipFile(self.zip_path) as sdv_zip:
+                    for f in sdv_zip.namelist():
+                        #compiled soft_device
+                        if f.startswith(sdv) and f.endswith("/"):
+                            if ("headers" in f and not "nrf5" in f) or ("toolchain/armgcc/" in f):
+                                dir_to_extract = f 
+                                self.extract_fromzip(sdv_zip, f)
+                        #for archives containing only soft_device source code 
+                        elif f.startswith("nrf5"):
+                            if (inc_path in f and len(f.split("/")[2]) == 4 and f.split("/")[2].startswith('s')) or (src_path in f and "xx" in f and "_s" in f):
+                                self.extract_fromzip(sdv_zip, f)
+            # if broken zip file
+            except zipfile.BadZipFile:
+                print("redownloading invalid zip file")
+                urllib.request.urlretrieve("http://" + self.zip_path, self.zip_path)
+                # retry zip extraction
+                continue
+            else:
+                break
+        else:
+            # all 5 tries exhausted
+            print("failed to retrieve SDK, exiting")
+            exit()
+
     def extract_hex(self, hex_path):
         """
         Extracts header and linker files from the SDK archive to local SDKs directory
